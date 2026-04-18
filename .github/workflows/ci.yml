@@ -14,9 +14,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Zig 0.14.1
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.14.1
+          mirror-selector: random
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: zig build -Doptimize=ReleaseSafe
