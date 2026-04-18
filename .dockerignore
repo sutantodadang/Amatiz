@@ -1,0 +1,39 @@
+# Build artefacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI / docs we don't need at build time
+.github/
+README.md
+LICENSE
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local runtime data
+data/
+index/
+tmp/
+tmp-*/
+*.log
+*.wal
+positions.json
+
+# Docker / Compose meta
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Secrets
+.env
+.env.*

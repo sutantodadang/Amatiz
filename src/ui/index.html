@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Amatiz</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1d222c;
+    --border: #2a313d;
+    --fg: #e7ecf3;
+    --muted: #8a93a6;
+    --accent: #6cf;
+    --accent-2: #4cd07f;
+    --warn: #f3b85c;
+    --err: #f06a6a;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header .logo { font-weight: 700; letter-spacing: .5px; color: var(--accent); }
+  header .grow { flex: 1; }
+  header .tenant { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  header input { background: var(--panel-2); border: 1px solid var(--border); color: var(--fg); padding: 4px 8px; border-radius: 4px; font: inherit; }
+  main { flex: 1; display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+  .toolbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: grid;
+    grid-template-columns: 1fr 180px 180px 90px auto auto;
+    gap: 8px; align-items: center;
+  }
+  .toolbar input, .toolbar select {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--fg);
+    padding: 6px 10px; border-radius: 4px; font: inherit; width: 100%;
+  }
+  .toolbar input.query { font-family: var(--mono); }
+  .btn {
+    background: var(--accent); color: #001823; font-weight: 600;
+    border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer;
+  }
+  .btn.secondary { background: var(--panel-2); color: var(--fg); border: 1px solid var(--border); }
+  .btn.live { background: var(--accent-2); color: #03200f; }
+  .btn.live.active { background: var(--err); color: #1a0000; }
+  .results {
+    overflow: auto;
+    padding: 0;
+  }
+  .status {
+    padding: 8px 16px; color: var(--muted); border-bottom: 1px solid var(--border);
+    display: flex; gap: 16px;
+  }
+  .status .ok { color: var(--accent-2); }
+  .status .err { color: var(--err); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--border);
+    vertical-align: top; font-family: var(--mono); font-size: 12px;
+  }
+  th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 500; z-index: 1; }
+  tbody tr:hover { background: var(--panel-2); }
+  td.ts { white-space: nowrap; color: var(--muted); width: 200px; }
+  td.src { color: var(--accent); width: 220px; word-break: break-all; }
+  td.msg { white-space: pre-wrap; word-break: break-word; }
+  td.msg .lbls { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .matrix-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 12px 16px; padding: 10px 14px;
+  }
+  .matrix-card .labels { color: var(--accent); font-family: var(--mono); margin-bottom: 6px; }
+  .matrix-card .samples { font-family: var(--mono); font-size: 12px; color: var(--muted); columns: 3; column-gap: 18px; }
+  .matrix-card .samples span { display: block; }
+  .matrix-card .samples b { color: var(--fg); font-weight: 500; }
+  .empty { color: var(--muted); padding: 24px 16px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">amatiz</span>
+  <span class="grow"></span>
+  <span class="tenant">tenant <input id="tenant" value="default" size="14" /></span>
+</header>
+
+<main>
+  <form class="toolbar" id="form">
+    <input class="query" id="query" placeholder='{job="myapp"} |= "error"' value='{job=~".+"}' />
+    <input id="start" placeholder="start (e.g. now-1h, ISO, ns)" value="now-1h" />
+    <input id="end"   placeholder="end (e.g. now, ISO, ns)" value="now" />
+    <input id="limit" type="number" min="1" max="5000" value="500" />
+    <button class="btn" type="submit">Run</button>
+    <button class="btn live" id="liveBtn" type="button">Tail</button>
+  </form>
+
+  <div class="results">
+    <div class="status" id="status">Ready.</div>
+    <div id="output"></div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const status = $('status');
+  const out = $('output');
+  let ws = null;
+  let liveRows = [];
+
+  function setStatus(msg, kind) {
+    status.innerHTML = '';
+    const span = document.createElement('span');
+    if (kind) span.className = kind;
+    span.textContent = msg;
+    status.appendChild(span);
+  }
+
+  function parseTime(value) {
+    if (!value) return '';
+    const v = value.trim();
+    if (v === 'now') return String(Date.now() * 1_000_000);
+    const rel = v.match(/^now-(\d+)([smhd])$/);
+    if (rel) {
+      const n = parseInt(rel[1], 10);
+      const unit = { s: 1e3, m: 60e3, h: 3600e3, d: 86400e3 }[rel[2]];
+      return String((Date.now() - n * unit) * 1_000_000);
+    }
+    if (/^\d+$/.test(v)) return v; // ns already
+    const t = Date.parse(v);
+    if (!isNaN(t)) return String(t * 1_000_000);
+    return v;
+  }
+
+  function fmtTs(nsStr) {
+    const ns = BigInt(nsStr);
+    const ms = Number(ns / 1000000n);
+    return new Date(ms).toISOString().replace('T', ' ').replace('Z', '');
+  }
+
+  function labelsToString(obj) {
+    return Object.entries(obj || {}).map(([k, v]) => `${k}="${v}"`).join(', ');
+  }
+
+  function renderStreams(data) {
+    out.innerHTML = '';
+    const result = data?.data?.result || [];
+    let total = 0;
+    const rows = [];
+    for (const stream of result) {
+      const lbls = labelsToString(stream.stream);
+      for (const [ts, msg] of stream.values || []) {
+        rows.push({ ts, msg, lbls, src: stream.stream?.filename || stream.stream?.source || stream.stream?.job || '' });
+        total++;
+      }
+    }
+    rows.sort((a, b) => (b.ts > a.ts ? 1 : -1));
+
+    if (!rows.length) {
+      out.innerHTML = '<div class="empty">No results.</div>';
+      setStatus(`0 entries.`, 'ok');
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Timestamp</th><th>Source</th><th>Message</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="ts">${fmtTs(r.ts)}</td><td class="src">${r.src}</td><td class="msg"></td>`;
+      const msgTd = tr.querySelector('.msg');
+      msgTd.textContent = r.msg;
+      if (r.lbls) {
+        const span = document.createElement('span');
+        span.className = 'lbls';
+        span.textContent = '{' + r.lbls + '}';
+        msgTd.appendChild(span);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    out.appendChild(table);
+    setStatus(`${total} entries from ${result.length} stream(s).`, 'ok');
+  }
+
+  function renderMatrix(data) {
+    out.innerHTML = '';
+    const result = data?.data?.result || [];
+    if (!result.length) {
+      out.innerHTML = '<div class="empty">No samples.</div>';
+      setStatus('0 samples.', 'ok');
+      return;
+    }
+    let totalSamples = 0;
+    for (const s of result) {
+      const card = document.createElement('div');
+      card.className = 'matrix-card';
+      const lbls = document.createElement('div');
+      lbls.className = 'labels';
+      lbls.textContent = '{' + labelsToString(s.metric) + '}';
+      card.appendChild(lbls);
+      const samples = document.createElement('div');
+      samples.className = 'samples';
+      for (const [ts, val] of s.values || []) {
+        const span = document.createElement('span');
+        const t = new Date(ts * 1000).toISOString().slice(11, 19);
+        span.innerHTML = `${t} <b>${val}</b>`;
+        samples.appendChild(span);
+        totalSamples++;
+      }
+      card.appendChild(samples);
+      out.appendChild(card);
+    }
+    setStatus(`${totalSamples} samples in ${result.length} series.`, 'ok');
+  }
+
+  async function runQuery() {
+    const q = $('query').value;
+    const start = parseTime($('start').value);
+    const end = parseTime($('end').value);
+    const limit = $('limit').value || '500';
+    const tenant = $('tenant').value || 'default';
+    const params = new URLSearchParams({ query: q, start, end, limit, step: '60s' });
+    setStatus('Running...');
+    try {
+      const r = await fetch('/loki/api/v1/query_range?' + params.toString(), {
+        headers: { 'X-Scope-OrgID': tenant },
+      });
+      const data = await r.json();
+      if (data.status !== 'success') {
+        out.innerHTML = '';
+        setStatus(data.error || 'Query failed.', 'err');
+        return;
+      }
+      if (data.data?.resultType === 'matrix') renderMatrix(data);
+      else renderStreams(data);
+    } catch (e) {
+      setStatus('Network error: ' + e.message, 'err');
+    }
+  }
+
+  function ensureLiveTable() {
+    if (out.querySelector('table[data-live]')) return out.querySelector('table[data-live] tbody');
+    out.innerHTML = '';
+    const table = document.createElement('table');
+    table.dataset.live = '1';
+    table.innerHTML = '<thead><tr><th>Timestamp</th><th>Source</th><th>Message</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    out.appendChild(table);
+    return tbody;
+  }
+
+  function startTail() {
+    const tenant = $('tenant').value || 'default';
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/loki/api/v1/tail?query=${encodeURIComponent($('query').value)}&tenant=${encodeURIComponent(tenant)}`;
+    ws = new WebSocket(url);
+    ws.onopen = () => setStatus('Live tail connected.', 'ok');
+    ws.onerror = () => setStatus('WebSocket error.', 'err');
+    ws.onclose = () => { setStatus('Live tail closed.'); $('liveBtn').classList.remove('active'); ws = null; };
+    ws.onmessage = (ev) => {
+      let payload;
+      try { payload = JSON.parse(ev.data); } catch { return; }
+      const tbody = ensureLiveTable();
+      for (const stream of payload.streams || []) {
+        const src = stream.stream?.source || stream.stream?.filename || '';
+        for (const [ts, msg] of stream.values || []) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="ts">${fmtTs(ts)}</td><td class="src">${src}</td><td class="msg"></td>`;
+          tr.querySelector('.msg').textContent = msg;
+          tbody.insertBefore(tr, tbody.firstChild);
+          while (tbody.childElementCount > 1000) tbody.removeChild(tbody.lastChild);
+        }
+      }
+    };
+  }
+
+  function stopTail() {
+    if (ws) try { ws.close(); } catch {}
+    ws = null;
+  }
+
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); runQuery(); });
+  $('liveBtn').addEventListener('click', () => {
+    const btn = $('liveBtn');
+    if (btn.classList.toggle('active')) {
+      btn.textContent = 'Stop';
+      startTail();
+    } else {
+      btn.textContent = 'Tail';
+      stopTail();
+    }
+  });
+
+  // Auto-run once on load.
+  runQuery();
+})();
+</script>
+</body>
+</html>

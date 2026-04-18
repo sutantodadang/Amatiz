@@ -1,0 +1,12 @@
+.{
+    .name = .amatiz,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0xc745d686cc8046e8,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "README.md",
+    },
+}

@@ -1,0 +1,27 @@
+# Zig
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local data / runtime artefacts (anchored to repo root so src/index/ stays tracked)
+/data/
+/index/
+/tmp/
+/tmp-*/
+*.log
+*.wal
+positions.json
+
+# Secrets
+*.env
+.env
+.env.*
+!.env.example

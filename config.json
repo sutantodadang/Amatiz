@@ -1,0 +1,14 @@
+{
+  "data_dir": "./data",
+  "index_dir": "./index",
+  "chunk_max_bytes": 10485760,
+  "compression_enabled": false,
+  "batch_size": 256,
+  "flush_interval_ms": 1000,
+  "tail_poll_ms": 250,
+  "http_host": "0.0.0.0",
+  "http_port": 3100,
+  "max_connections": 128,
+  "default_query_limit": 1000,
+  "log_level": "info"
+}
