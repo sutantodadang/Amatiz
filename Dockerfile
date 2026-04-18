@@ -26,9 +26,10 @@ ARG TARGETARCH
 RUN apk add --no-cache curl xz file ca-certificates
 
 # Always pull the amd64 Zig toolchain; we cross-compile from there.
-RUN curl -fSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+# Note: Zig's tarball naming is `zig-<target>-<version>.tar.xz` (target before version).
+RUN curl -fSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
       | tar -xJ -C /opt && \
-    mv "/opt/zig-linux-x86_64-${ZIG_VERSION}" /opt/zig
+    mv "/opt/zig-x86_64-linux-${ZIG_VERSION}" /opt/zig
 ENV PATH="/opt/zig:${PATH}"
 
 WORKDIR /src
